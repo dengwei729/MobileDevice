@@ -24,115 +24,138 @@
 
 from amdevice import *
 from plistservice import *
+import afcmediadirectory
 
 
 class InstallationProxy(PlistService):
-	def __init__(self, amdevice):
-		PlistService.__init__(
-			self, 
-			amdevice, 
-			[AMSVC_INSTALLATION_PROXY], 
-			kCFPropertyListXMLFormat_v1_0
-		)
+    def __init__(self, amdevice):
+        PlistService.__init__(
+            self, 
+            amdevice, 
+            [AMSVC_INSTALLATION_PROXY], 
+            kCFPropertyListXMLFormat_v1_0
+        )
 
-	def lookup_applications(self):
-		retval = []
-		self._sendmsg({
-			u'Command': u'Browse',
-			u'ClientOptions': {
-				u'ApplicationType': u'Any'
-			}
-		})
-		# I've no idea why we get it in multiple responses .. but we do
-		while True:
-			reply = self._recvmsg()
-			if (    reply is None 
-				or (    u'Status' in reply 
-					and reply[u'Status'] == u'Complete')):
-				break # done
-			for app in reply[u'CurrentList']:
-				retval.append(app)
-		return retval
+    def lookup_applications(self):
+        retval = []
+        self._sendmsg({
+            u'Command': u'Browse',
+            u'ClientOptions': {
+                u'ApplicationType': u'Any'
+            }
+        })
+        # I've no idea why we get it in multiple responses .. but we do
+        while True:
+            reply = self._recvmsg()
+            if (    reply is None 
+                or (    u'Status' in reply 
+                    and reply[u'Status'] == u'Complete')):
+                break # done
+            for app in reply[u'CurrentList']:
+                retval.append(app)
+        return retval
 
-	def install_application(self, path, options=None, progress=None):
-		u'''Install an application from the /PublicStaging directory'''
-		self._install_or_upgrade(True, path, options, progress)
+    def install_application(self, path, options=None, progress=None):
+        u'''Install an application from the /PublicStaging directory'''
+        self._install_or_upgrade(True, path, options, progress)
 
-	def upgrade_application(self, path, options=None, progress=None):
-		u'''Upgrade an application from the /PublicStaging directory'''
-		self._install_or_upgrade(False, path, options, progress)
+    def upgrade_application(self, path, options=None, progress=None):
+        u'''Upgrade an application from the /PublicStaging directory'''
+        self._install_or_upgrade(False, path, options, progress)
 
-	def _install_or_upgrade(self, install, path, options=None, progress=None):
-		def callback(cfdict, arg):
-			pass
+    def _install_or_upgrade(self, install, path, options=None, progress=None):
+        def callback(cfdict, arg):
+            pass
 
-		cfpath = CFTypeFrom(path)
-		if options is not None:
-			cfoptions = CFTypeFrom(options)
-		else:
-			cfoptions = CFTypeFrom({
-				u'PackageType': u'Developer'
-			})
-		cb = AFCProgressCallback(callback)
-		if progress is not None:
-			cb = AFCProgressCallback(progress)
-		if install:
-			err = AMDeviceInstallApplication(self.s, cfpath, cfoptions, cb, None)
-		else:
-			err = AMDeviceUpgradeApplication(self.s, cfpath, cfoptions, cb, None)
-		CFRelease(cfpath)
-		CFRelease(cfoptions)
-		if err != MDERR_OK:
-			raise RuntimeError(u'Unable to install application', err)
+        cfpath = CFTypeFrom(path)
+        if options is not None:
+            cfoptions = CFTypeFrom(options)
+        else:
+            cfoptions = CFTypeFrom({
+                u'PackageType': u'Developer'
+            })
+        cb = AMDeviceProgressCallback(callback)
+        if progress is not None:
+            cb = AMDeviceProgressCallback(progress)
+        if install:
+            err = AMDeviceInstallApplication(self.s, cfpath, cfoptions, cb, None)
+        else:
+            err = AMDeviceUpgradeApplication(self.s, cfpath, cfoptions, cb, None)
+        CFRelease(cfpath)
+        CFRelease(cfoptions)
+        if err != MDERR_OK:
+            raise RuntimeError(u'Unable to install application', err)
 
-	# TODO: archive, restore, etc
+    # TODO: archive, restore, etc
 
 
 
 def register_argparse_install(cmdargs):
-	import argparse
-	import sys
-	import pprint
+    import argparse
+    import sys
+    import pprint
 
-	# AMDSetLogLevel(0xff)
-	# AMDSetLogLevel(0x0)
+    # AMDSetLogLevel(0xff)
+    # AMDSetLogLevel(0x0)
 
-	def cmd_browse(args, dev):
-		pxy = InstallationProxy(dev)
-		pprint.pprint(pxy.lookup_applications())
-		pxy.disconnect()
+    def cmd_browse(args, dev):
+        pxy = InstallationProxy(dev)
+        pprint.pprint(pxy.lookup_applications())
+        pxy.disconnect()
 
-	def cmd_listapps(args, dev):
-		pxy = InstallationProxy(dev)
-		apps = {}
-		maxappid = 0
-		for app in pxy.lookup_applications():
-			appid = app[u'CFBundleIdentifier']
-			apps[appid] = app[u'Path']
-			if len(appid) > maxappid:
-				maxappid = len(appid)
-		pxy.disconnect()
-		for appid in sorted(apps.keys()):
-			apppath = apps[appid]
-			print(appid.ljust(maxappid) + u' ' + apppath)
+    def cmd_listapps(args, dev):
+        pxy = InstallationProxy(dev)
+        apps = {}
+        maxappid = 0
+        for app in pxy.lookup_applications():
+            appid = app[u'CFBundleIdentifier']
+            apps[appid] = app[u'Path']
+            if len(appid) > maxappid:
+                maxappid = len(appid)
+        pxy.disconnect()
+        for appid in sorted(apps.keys()):
+            apppath = apps[appid]
+            print(appid.ljust(maxappid) + u' ' + apppath)
 
-	installparser = cmdargs.add_parser(
-		u'install', 
-		help=u'installation proxy commands'
-	)
-	installcmd = installparser.add_subparsers()
+    def cmd_installapp(args, dev):
+        md = afcmediadirectory.AFCMediaDirectory(dev)
+        md.transfer_application(args.path)
+        md.disconnect()
 
-	# browse command
-	browsecmd = installcmd.add_parser(
-		u'browse',
-		help=u'list all information about applications on the device'
-	)
-	browsecmd.set_defaults(func=cmd_browse)
+        pxy = InstallationProxy(dev)
+        pxy.install_application(args.path)
+        pxy.disconnect()
 
-	# listappid command
-	listappscmd = installcmd.add_parser(
-		u'listapps',
-		help=u'lists all application ids'
-	)
-	listappscmd.set_defaults(func=cmd_listapps)
+    installparser = cmdargs.add_parser(
+        u'install', 
+        help=u'installation proxy commands'
+    )
+    installcmd = installparser.add_subparsers()
+
+    # browse command
+    browsecmd = installcmd.add_parser(
+        u'browse',
+        help=u'list all information about applications on the device'
+    )
+    browsecmd.set_defaults(func=cmd_browse)
+
+    # listappid command
+    listappscmd = installcmd.add_parser(
+        u'listapps',
+        help=u'lists all application ids'
+    )
+    listappscmd.set_defaults(func=cmd_listapps)
+
+    # installapp command
+    installappcmd = installcmd.add_parser(
+        u'installapp',
+        help=u'install app'
+    )
+
+    installappcmd.add_argument(
+        u'path',
+        help=u'path of app'
+    )
+    installappcmd.set_defaults(func=cmd_installapp)
+
 

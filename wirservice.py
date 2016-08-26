@@ -27,35 +27,35 @@ from plistservice import *
 
 
 class WIRService(PlistService):
-	def __init__(self, amdevice, servicenames, format=kCFPropertyListBinaryFormat_v1_0):
-		PlistService.__init__(self, amdevice, servicenames, format)
+    def __init__(self, amdevice, servicenames, format=kCFPropertyListBinaryFormat_v1_0):
+        PlistService.__init__(self, amdevice, servicenames, format)
 
-	def _sendmsg(self, selector, args):
-		wi = dict_to_plist_encoding({
-			u'__selector': selector,
-			u'__argument': args
-		})
-		step = 8096 # split very big messages
-		start = 0
-		end = step
-		while end < len(wi):
-			PlistService._sendmsg(self, {
-				u'WIRPartialMessageKey': wi[start:end]
-			})
-			start = end
-			end += step
-		PlistService._sendmsg(self, {
-			u'WIRFinalMessageKey': wi[start:end]
-		})
+    def _sendmsg(self, selector, args):
+        wi = dict_to_plist_encoding({
+            u'__selector': selector,
+            u'__argument': args
+        })
+        step = 8096 # split very big messages
+        start = 0
+        end = step
+        while end < len(wi):
+            PlistService._sendmsg(self, {
+                u'WIRPartialMessageKey': wi[start:end]
+            })
+            start = end
+            end += step
+        PlistService._sendmsg(self, {
+            u'WIRFinalMessageKey': wi[start:end]
+        })
 
-	def _recvmsg(self):
-		wi = ''
-		wimsg = PlistService._recvmsg(self)
-		while wimsg and u'WIRPartialMessageKey' in wimsg:
-			wi += wimsg[u'WIRPartialMessageKey']
-			wimsg = PlistService._recvmsg(self)
-		wi += wimsg[u'WIRFinalMessageKey']
-		rpc = dict_from_plist_encoding(wi)
-		return (rpc[u'__selector'], rpc[u'__argument'])
+    def _recvmsg(self):
+        wi = ''
+        wimsg = PlistService._recvmsg(self)
+        while wimsg and u'WIRPartialMessageKey' in wimsg:
+            wi += wimsg[u'WIRPartialMessageKey']
+            wimsg = PlistService._recvmsg(self)
+        wi += wimsg[u'WIRFinalMessageKey']
+        rpc = dict_from_plist_encoding(wi)
+        return (rpc[u'__selector'], rpc[u'__argument'])
 
 
