@@ -63,20 +63,22 @@ class InstallationProxy(PlistService):
         u'''Upgrade an application from the /PublicStaging directory'''
         self._install_or_upgrade(False, path, options, progress)
 
-    def _install_or_upgrade(self, install, path, options=None, progress=None):
-        def callback(cfdict, arg):
-            pass
+    def _callback(self, cfdict, arg):
+        showStatus('Installing', cfdict)
+        return 0
 
-        cfpath = CFTypeFrom(path)
+    def _install_or_upgrade(self, install, path, options=None, progress=None):
+
+        cfpath = CFTypeFrom(path.decode("utf-8"))
         if options is not None:
             cfoptions = CFTypeFrom(options)
         else:
             cfoptions = CFTypeFrom({
                 u'PackageType': u'Developer'
             })
-        cb = AMDeviceProgressCallback(callback)
+        cb = AMDeviceTransferApplicationCallback(self._callback)
         if progress is not None:
-            cb = AMDeviceProgressCallback(progress)
+            cb = AMDeviceTransferApplicationCallback(progress)
         if install:
             err = AMDeviceInstallApplication(self.s, cfpath, cfoptions, cb, None)
         else:
@@ -118,13 +120,17 @@ def register_argparse_install(cmdargs):
             print(appid.ljust(maxappid) + u' ' + apppath)
 
     def cmd_installapp(args, dev):
-        md = afcmediadirectory.AFCMediaDirectory(dev)
-        md.transfer_application(args.path)
-        md.disconnect()
-
+        app_path = os.path.abspath(args.path).decode("utf-8")
         pxy = InstallationProxy(dev)
-        pxy.install_application(args.path)
+        pxy.install_application(app_path)
         pxy.disconnect()
+
+    def cmd_uploadapp(args, dev):
+        app_path = os.path.abspath(args.path).decode("utf-8")
+        md = afcmediadirectory.AFCMediaDirectory(dev)
+        md.transfer_application(app_path)
+        os.close(md.s)
+        md.disconnect()
 
     installparser = cmdargs.add_parser(
         u'install', 
@@ -146,12 +152,22 @@ def register_argparse_install(cmdargs):
     )
     listappscmd.set_defaults(func=cmd_listapps)
 
+    # uploadapp command
+    installappcmd = installcmd.add_parser(
+        u'uploadapp',
+        help=u'upload app'
+    )
+    installappcmd.add_argument(
+        u'path',
+        help=u'path of app'
+    )
+    installappcmd.set_defaults(func=cmd_uploadapp)
+
     # installapp command
     installappcmd = installcmd.add_parser(
         u'installapp',
         help=u'install app'
     )
-
     installappcmd.add_argument(
         u'path',
         help=u'path of app'
